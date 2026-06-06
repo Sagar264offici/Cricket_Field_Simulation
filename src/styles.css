@@ -1006,6 +1006,10 @@ h1 {
     justify-content: flex-start;
   }
 
+  .topbar {
+    gap: 12px;
+  }
+
   .workspace {
     grid-template-columns: 1fr;
     padding: 12px 12px 178px;
@@ -1027,22 +1031,43 @@ h1 {
     order: 3;
   }
 
+  .stage-toolbar {
+    gap: 10px;
+  }
+
+  .toolbar-group,
+  .rotation-control,
+  .label-selector-group {
+    width: 100%;
+  }
+
+  .toolbar-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: space-between;
+  }
+
+  .rotation-control {
+    min-width: 0;
+    padding: 0 10px;
+  }
+
+  .rotation-control input {
+    width: 100%;
+  }
+
   .tactical-board {
     min-height: 68vh;
+  }
+
+  .player-list {
+    max-height: none;
   }
 
   .simulation-row,
   .timeline-grid {
     grid-template-columns: 1fr;
-  }
-
-  .rotation-control {
-    min-width: 0;
-    width: 100%;
-  }
-
-  .rotation-control input {
-    flex: 1;
   }
 }
 
