@@ -1,6 +1,7 @@
 {
   "chat.tools.terminal.autoApprove": {
     "mkdir": true,
-    "cp": true
+    "cp": true,
+    "npm install": true
   }
 }

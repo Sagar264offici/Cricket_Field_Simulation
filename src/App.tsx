@@ -2,56 +2,57 @@ import { AnimatePresence, motion } from "framer-motion";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 import {
-    Activity,
-    BarChart3,
-    Bot,
-    ChevronRight,
-    ClipboardList,
-    Compass,
-    Download,
-    FileDown,
-    Focus,
-    Github,
-    HelpCircle,
-    History,
-    Import,
-    Instagram,
-    Layers3,
-    Linkedin,
-    Lock,
-    Maximize2,
-    Mic,
-    Moon,
-    Play,
-    Radar,
-    Redo2,
-    RotateCcw,
-    Save,
-    Share2,
-    ShieldCheck,
-    Sparkles,
-    Sun,
-    Target,
-    Undo2,
-    Unlock,
-    Users,
-    Wand2,
-    X,
-    ZoomIn,
-    ZoomOut,
+  Activity,
+  BarChart3,
+  Bot,
+  Camera,
+  ChevronRight,
+  ClipboardList,
+  Compass,
+  Download,
+  FileDown,
+  Focus,
+  GitBranch,
+  HelpCircle,
+  History,
+  Import,
+  Layers3,
+  Link,
+  Lock,
+  Mail,
+  Maximize2,
+  Mic,
+  Moon,
+  Play,
+  Radar,
+  Redo2,
+  RotateCcw,
+  Save,
+  Share2,
+  ShieldCheck,
+  Sparkles,
+  Sun,
+  Target,
+  Undo2,
+  Unlock,
+  Users,
+  Wand2,
+  X,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-    Bar,
-    BarChart,
-    PolarAngleAxis,
-    PolarGrid,
-    RadarChart,
-    Radar as RadarShape,
-    ResponsiveContainer,
-    Tooltip,
-    XAxis,
-    YAxis,
+  Bar,
+  BarChart,
+  PolarAngleAxis,
+  PolarGrid,
+  RadarChart,
+  Radar as RadarShape,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
 } from "recharts";
 
 type Point = { x: number; y: number };
@@ -813,7 +814,9 @@ const getInitialContext = (): MatchContext => {
       if (decoded.context) {
         return { ...contextDefaults, ...decoded.context };
       }
-    } catch {}
+    } catch {
+      // Ignore invalid shared formation data in the URL.
+    }
   }
   const saved = localStorage.getItem(storageKey);
   if (!saved) return contextDefaults;
@@ -1094,7 +1097,8 @@ function App() {
     );
     if (!filename) return;
     const safeName =
-      filename.trim().replace(/[\/\\:?<>|\*"'`]/g, "-") || "fielding-setting";
+      filename.trim().replace(/[/\\:?<>|*"'\u0060]/g, "-") ||
+      "fielding-setting";
     const canvas = await html2canvas(boardRef.current, {
       backgroundColor: null,
       scale: 2,
@@ -2023,7 +2027,7 @@ function App() {
                 target="_blank"
                 rel="noreferrer noopener"
               >
-                <Linkedin size={18} />
+                <Link size={18} />
                 <span>LinkedIn</span>
               </a>
               <a
@@ -2032,7 +2036,7 @@ function App() {
                 target="_blank"
                 rel="noreferrer noopener"
               >
-                <Github size={18} />
+                <GitBranch size={18} />
                 <span>GitHub</span>
               </a>
               <a
@@ -2041,16 +2045,23 @@ function App() {
                 target="_blank"
                 rel="noreferrer noopener"
               >
-                <Instagram size={18} />
+                <Camera size={18} />
                 <span>Instagram</span>
               </a>
               <a
                 className="contact-link"
                 href="mailto:nooneisusingthismail@gmail.com"
               >
+                <Mail size={18} />
                 <span>Contact Developer</span>
               </a>
             </div>
+            <p className="contact-email">
+              Email:{" "}
+              <a href="mailto:nooneisusingthismail@gmail.com">
+                nooneisusingthismail@gmail.com
+              </a>
+            </p>
           </Panel>
         </aside>
       </div>
