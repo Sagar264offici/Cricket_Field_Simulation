@@ -11,10 +11,13 @@ import {
     Download,
     FileDown,
     Focus,
+    Github,
     HelpCircle,
     History,
     Import,
+    Instagram,
     Layers3,
+    Linkedin,
     Lock,
     Maximize2,
     Mic,
@@ -2009,6 +2012,44 @@ function App() {
                   </strong>
                 </div>
               ))}
+            </div>
+          </Panel>
+
+          <Panel title="Connect" icon={<Users size={18} />}>
+            <div className="contact-links">
+              <a
+                className="contact-link"
+                href="https://www.linkedin.com/in/sagarakanoone/"
+                target="_blank"
+                rel="noreferrer noopener"
+              >
+                <Linkedin size={18} />
+                <span>LinkedIn</span>
+              </a>
+              <a
+                className="contact-link"
+                href="https://github.com/Sagar264offici/"
+                target="_blank"
+                rel="noreferrer noopener"
+              >
+                <Github size={18} />
+                <span>GitHub</span>
+              </a>
+              <a
+                className="contact-link"
+                href="https://instagram.com/multiverse.sagar"
+                target="_blank"
+                rel="noreferrer noopener"
+              >
+                <Instagram size={18} />
+                <span>Instagram</span>
+              </a>
+              <a
+                className="contact-link"
+                href="mailto:nooneisusingthismail@gmail.com"
+              >
+                <span>Contact Developer</span>
+              </a>
             </div>
           </Panel>
         </aside>
