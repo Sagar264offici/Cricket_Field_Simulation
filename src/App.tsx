@@ -1939,7 +1939,7 @@ function App() {
                   strokeWidth="1.3"
                 />
                 <path
-                  d="M -48 -31 A 48 48 0 0 0 48 -31 L 48 28 A 48 48 0 0 0 -48 28 Z"
+                  d="M -48 -31 A 48 48 0 0 1 48 -31 L 48 28 A 48 48 0 0 1 -48 28 Z"
                   fill="none"
                   stroke="#fde68a"
                   strokeDasharray="2 2"
