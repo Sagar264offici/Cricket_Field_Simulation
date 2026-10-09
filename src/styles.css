@@ -1226,3 +1226,132 @@ h1 {
     width: 100%;
   }
 }
+
+
+/* Match-format fielding restrictions */
+.rule-number-input {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--panel-strong), transparent 10%);
+  outline: none;
+  padding: 0 10px;
+}
+
+.rule-number-input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.fielding-rules {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+  padding: 11px;
+}
+
+.fielding-rule-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 9px;
+}
+
+.fielding-rule-heading {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.fielding-rule-heading > span {
+  color: var(--muted);
+  font-size: 0.62rem;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+}
+
+.fielding-rule-heading strong {
+  font-size: 0.82rem;
+  line-height: 1.3;
+}
+
+.fielding-rule-badge {
+  flex-shrink: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 5px 7px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 0.58rem;
+  font-weight: 950;
+}
+
+.fielding-rule-status.legal .fielding-rule-badge {
+  color: #86efac;
+  border-color: rgba(134, 239, 172, 0.34);
+  background: rgba(34, 197, 94, 0.09);
+}
+
+.fielding-rule-status.illegal .fielding-rule-badge {
+  color: #fda4af;
+  border-color: rgba(251, 113, 133, 0.42);
+  background: rgba(244, 63, 94, 0.1);
+}
+
+.fielding-rule-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.rule-metric {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+  padding: 8px;
+}
+
+.rule-metric span {
+  color: var(--muted);
+  font-size: 0.63rem;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.rule-metric strong {
+  font-size: 1.15rem;
+}
+
+.fielding-rule-note {
+  color: var(--muted);
+  font-size: 0.73rem;
+  line-height: 1.45;
+}
+
+.rule-fix-button {
+  min-height: 36px;
+  border: 1px solid rgba(94, 234, 212, 0.35);
+  border-radius: 8px;
+  color: var(--text);
+  background: rgba(45, 212, 191, 0.09);
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.rule-fix-button:hover:not(:disabled) {
+  background: rgba(45, 212, 191, 0.16);
+}
+
+.rule-fix-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
