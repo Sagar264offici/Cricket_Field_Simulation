@@ -84,6 +84,9 @@ type MatchContext = {
     | "Mystery Spinner";
   pitch: "Flat" | "Green" | "Dusty" | "Turning" | "Wet";
   format: "T10" | "T20" | "ODI" | "Test";
+  inningsOvers: number;
+  currentOver: number;
+  currentBall: number;
   phase: "Powerplay" | "Middle Overs" | "Death Overs";
 };
 
@@ -470,6 +473,9 @@ const contextDefaults: MatchContext = {
   bowlerType: "Fast",
   pitch: "Green",
   format: "T20",
+  inningsOvers: 20,
+  currentOver: 1,
+  currentBall: 1,
   phase: "Powerplay",
 };
 
@@ -486,7 +492,7 @@ const tutorialSteps = [
   {
     target: "context",
     title: "Set The Match Situation",
-    body: "Choose batting hand, style, bowler type, pitch, format, and phase first. The assistant reads this context before scoring your field.",
+    body: "Choose batting hand, style, bowler type, pitch, format, innings length, current over, and ball. The simulator applies the matching fielding restrictions automatically.",
     action: "Use T20 Powerplay",
   },
   {
@@ -542,6 +548,177 @@ const distance = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
 
 const average = (values: number[]) =>
   Math.round(values.reduce((total, value) => total + value, 0) / values.length);
+
+const FIELDING_RESTRICTION_RADIUS = 48;
+
+const ODI_POWERPLAY_SPLITS: Record<number, [number, number, number]> = {
+  20: [4, 12, 4], 21: [4, 13, 4], 22: [5, 13, 4], 23: [5, 14, 4],
+  24: [5, 14, 5], 25: [5, 15, 5], 26: [5, 16, 5], 27: [6, 16, 5],
+  28: [6, 17, 5], 29: [6, 17, 6], 30: [6, 18, 6], 31: [6, 19, 6],
+  32: [7, 19, 6], 33: [7, 20, 6], 34: [7, 20, 7], 35: [7, 21, 7],
+  36: [7, 22, 7], 37: [8, 22, 7], 38: [8, 23, 7], 39: [8, 23, 8],
+  40: [8, 24, 8], 41: [8, 25, 8], 42: [9, 25, 8], 43: [9, 26, 8],
+  44: [9, 26, 9], 45: [9, 27, 9], 46: [9, 28, 9], 47: [10, 28, 9],
+  48: [10, 29, 9], 49: [10, 29, 10], 50: [10, 30, 10],
+};
+
+const T20_POWERPLAY_BALLS: Record<number, number> = {
+  5: 9, 6: 11, 7: 13, 8: 14, 9: 16, 10: 18, 11: 20, 12: 22,
+  13: 23, 14: 25, 15: 27, 16: 29, 17: 31, 18: 32, 19: 34, 20: 36,
+};
+
+type FieldingRule = {
+  phaseLabel: string;
+  maxOutside: number;
+  applies: boolean;
+  isPowerplay: boolean;
+  note: string;
+};
+
+const getDefaultInningsOvers = (format: MatchContext["format"]) =>
+  format === "ODI" ? 50 : format === "T10" ? 10 : 20;
+
+const formatBallDuration = (balls: number) => {
+  const fullOvers = Math.floor(balls / 6);
+  const remainingBalls = balls % 6;
+  if (remainingBalls === 0) return fullOvers + (fullOvers === 1 ? " over" : " overs");
+  return (fullOvers ? fullOvers + " overs and " : "") +
+    remainingBalls + (remainingBalls === 1 ? " ball" : " balls");
+};
+
+const isInsideRestrictionArea = (point: Point) => {
+  const x = point.x;
+  const y = point.y;
+  if (Math.abs(x) <= FIELDING_RESTRICTION_RADIUS && y >= -31 && y <= 28) {
+    return true;
+  }
+  if (y < -31 && Math.hypot(x, y + 31) <= FIELDING_RESTRICTION_RADIUS) {
+    return true;
+  }
+  if (y > 28 && Math.hypot(x, y - 28) <= FIELDING_RESTRICTION_RADIUS) {
+    return true;
+  }
+  return false;
+};
+
+const isOutsideRestrictionArea = (point: Point) =>
+  !isInsideRestrictionArea(point);
+
+const projectIntoRestrictionArea = (point: Point): Point => {
+  const safeRadius = FIELDING_RESTRICTION_RADIUS - 0.5;
+  if (point.y < -31) {
+    const dx = point.x;
+    const dy = point.y + 31;
+    const radius = Math.hypot(dx, dy);
+    if (radius <= safeRadius) return point;
+    return { x: (dx / radius) * safeRadius, y: -31 + (dy / radius) * safeRadius };
+  }
+  if (point.y > 28) {
+    const dx = point.x;
+    const dy = point.y - 28;
+    const radius = Math.hypot(dx, dy);
+    if (radius <= safeRadius) return point;
+    return { x: (dx / radius) * safeRadius, y: 28 + (dy / radius) * safeRadius };
+  }
+  return { x: clamp(point.x, -safeRadius, safeRadius), y: point.y };
+};
+
+const fitFieldersToOutsideLimit = (fielders: Fielder[], maxOutside: number) => {
+  const outside = fielders
+    .filter(isOutsideRestrictionArea)
+    .sort((a, b) => Math.hypot(b.x, b.y) - Math.hypot(a.x, a.y));
+  if (outside.length <= maxOutside) return fielders;
+  const keepOutside = new Set(outside.slice(0, maxOutside).map((fielder) => fielder.id));
+  return fielders.map((fielder) => {
+    if (isInsideRestrictionArea(fielder) || keepOutside.has(fielder.id)) return fielder;
+    return { ...fielder, ...projectIntoRestrictionArea(fielder) };
+  });
+};
+
+const getFieldingRule = (context: MatchContext): FieldingRule => {
+  if (context.format === "Test") {
+    return {
+      phaseLabel: "Test cricket — no limited-overs Powerplay",
+      maxOutside: 11,
+      applies: false,
+      isPowerplay: false,
+      note: "ICC Test playing conditions do not apply the limited-overs 30-yard Powerplay caps. The simulator leaves field placement unrestricted in Test mode.",
+    };
+  }
+
+  if (context.format === "ODI") {
+    const inningsOvers = clamp(Math.trunc(context.inningsOvers || 50), 20, 50);
+    const [powerplay1, powerplay2] = ODI_POWERPLAY_SPLITS[inningsOvers] ?? [10, inningsOvers - 20, 10];
+    const over = clamp(Math.trunc(context.currentOver || 1), 1, inningsOvers);
+    if (over <= powerplay1) {
+      return {
+        phaseLabel: "Powerplay 1 · overs 1–" + powerplay1,
+        maxOutside: 2,
+        applies: true,
+        isPowerplay: true,
+        note: "ICC men's ODI: a maximum of 2 fielders may be outside the 30-yard restriction area during Powerplay 1. Reduced-innings phase lengths follow the ICC table.",
+      };
+    }
+    if (over <= powerplay1 + powerplay2) {
+      return {
+        phaseLabel: "Powerplay 2 · overs " + (powerplay1 + 1) + "–" + (powerplay1 + powerplay2),
+        maxOutside: 4,
+        applies: true,
+        isPowerplay: false,
+        note: "ICC men's ODI: a maximum of 4 fielders may be outside during Powerplay 2. In a full 50-over innings, this is overs 11–40.",
+      };
+    }
+    return {
+      phaseLabel: "Powerplay 3 · overs " + (powerplay1 + powerplay2 + 1) + "–" + inningsOvers,
+      maxOutside: 5,
+      applies: true,
+      isPowerplay: false,
+      note: "ICC men's ODI: a maximum of 5 fielders may be outside during Powerplay 3. In a full 50-over innings, this is overs 41–50.",
+    };
+  }
+
+  const inningsOvers = context.format === "T10"
+    ? clamp(Math.trunc(context.inningsOvers || 10), 3, 10)
+    : clamp(Math.trunc(context.inningsOvers || 20), 5, 20);
+  const over = clamp(Math.trunc(context.currentOver || 1), 1, inningsOvers);
+  const ball = clamp(Math.trunc(context.currentBall || 1), 1, 6);
+  const deliveryNumber = (over - 1) * 6 + ball;
+
+  if (context.format === "T20") {
+    const powerplayBalls = T20_POWERPLAY_BALLS[inningsOvers] ?? 36;
+    const inPowerplay = deliveryNumber <= powerplayBalls;
+    return {
+      phaseLabel: inPowerplay ? "Powerplay" : "Non-powerplay",
+      maxOutside: inPowerplay ? 2 : 5,
+      applies: true,
+      isPowerplay: inPowerplay,
+      note: "ICC men's T20I: at most 2 fielders outside during the Powerplay (" +
+        formatBallDuration(powerplayBalls) + "), then at most 5. Ball-level tracking handles reduced Powerplays that end mid-over.",
+    };
+  }
+
+  const powerplayBalls = Math.min(18, inningsOvers * 6);
+  const inPowerplay = deliveryNumber <= powerplayBalls;
+  return {
+    phaseLabel: inPowerplay ? "Powerplay · custom T10 preset" : "Post-powerplay · custom T10 preset",
+    maxOutside: inPowerplay ? 2 : 5,
+    applies: true,
+    isPowerplay: inPowerplay,
+    note: "T10 rules vary by competition. This simulator uses a configurable 3-over Powerplay preset (2 outside), then a 5-outside limit; verify your tournament's playing conditions.",
+  };
+};
+
+const deriveTacticalPhase = (context: MatchContext): MatchContext["phase"] => {
+  const rule = getFieldingRule(context);
+  if (!rule.applies) return "Middle Overs";
+  if (rule.isPowerplay) return "Powerplay";
+  if (context.format === "ODI") {
+    return rule.phaseLabel.startsWith("Powerplay 2") ? "Middle Overs" : "Death Overs";
+  }
+  return context.currentOver > Math.floor(context.inningsOvers * 0.8)
+    ? "Death Overs"
+    : "Middle Overs";
+};
 
 const detectPosition = (
   point: Point,
@@ -776,6 +953,19 @@ const normalizeFielders = (loadedFielders: Fielder[]) =>
     };
   });
 
+
+const normalizeContext = (saved?: Partial<MatchContext>): MatchContext => {
+  const format = saved?.format ?? contextDefaults.format;
+  const defaultOvers = saved?.inningsOvers ?? getDefaultInningsOvers(format);
+  const minOvers = format === "ODI" ? 20 : format === "T20" ? 5 : format === "T10" ? 3 : 1;
+  const maxOvers = format === "ODI" ? 50 : format === "T20" ? 20 : format === "T10" ? 10 : 120;
+  const inningsOvers = clamp(Math.trunc(defaultOvers), minOvers, maxOvers);
+  const currentOver = clamp(Math.trunc(saved?.currentOver ?? 1), 1, inningsOvers);
+  const currentBall = clamp(Math.trunc(saved?.currentBall ?? 1), 1, 6);
+  const combined = { ...contextDefaults, ...saved, format, inningsOvers, currentOver, currentBall };
+  return { ...combined, phase: deriveTacticalPhase(combined) };
+};
+
 const getInitialFielders = (): Fielder[] => {
   const params = new URLSearchParams(window.location.search);
   const urlFormation = params.get("formation");
@@ -812,21 +1002,19 @@ const getInitialContext = (): MatchContext => {
         context?: MatchContext;
       };
       if (decoded.context) {
-        return { ...contextDefaults, ...decoded.context };
+        return normalizeContext(decoded.context);
       }
     } catch {
       // Ignore invalid shared formation data in the URL.
     }
   }
   const saved = localStorage.getItem(storageKey);
-  if (!saved) return contextDefaults;
+  if (!saved) return normalizeContext();
   try {
     const parsed = JSON.parse(saved) as { context?: MatchContext };
-    return parsed.context
-      ? { ...contextDefaults, ...parsed.context }
-      : contextDefaults;
+    return normalizeContext(parsed.context);
   } catch {
-    return contextDefaults;
+    return normalizeContext();
   }
 };
 
@@ -866,6 +1054,13 @@ function App() {
   const [coachOpen, setCoachOpen] = useState(false);
   const [tutorialOpen, setTutorialOpen] = useState(false);
   const [tutorialStep, setTutorialStep] = useState(0);
+
+  const fieldingRule = useMemo(
+    () => getFieldingRule(context),
+    [context.format, context.inningsOvers, context.currentOver, context.currentBall],
+  );
+  const outsideCount = fielders.filter(isOutsideRestrictionArea).length;
+  const fieldingIsLegal = !fieldingRule.applies || outsideCount <= fieldingRule.maxOutside;
 
   const analysis = useMemo(
     () => analyzeField(stableFielders, context),
@@ -946,6 +1141,16 @@ function App() {
     [historyIndex],
   );
 
+  useEffect(() => {
+    if (!fieldingRule.applies) return;
+    const legalFielders = fitFieldersToOutsideLimit(fielders, fieldingRule.maxOutside);
+    if (legalFielders === fielders) return;
+    commitFielders(
+      legalFielders,
+      "Field adjusted to satisfy " + fieldingRule.phaseLabel + " restrictions",
+    );
+  }, [commitFielders, fielders, fieldingRule]);
+
   const undo = useCallback(() => {
     const nextIndex = Math.max(0, historyIndex - 1);
     setHistoryIndex(nextIndex);
@@ -1009,11 +1214,21 @@ function App() {
   };
 
   const updateFielderPosition = (id: number, point: Point) => {
-    setFielders((current) =>
-      current.map((fielder) =>
-        fielder.id === id ? { ...fielder, x: point.x, y: point.y } : fielder,
-      ),
-    );
+    setFielders((current) => {
+      const movingFielder = current.find((fielder) => fielder.id === id);
+      const outsideNow = current.filter(isOutsideRestrictionArea).length;
+      const isEnteringOutside = movingFielder &&
+        isInsideRestrictionArea(movingFielder) &&
+        isOutsideRestrictionArea(point);
+      const safePoint = fieldingRule.applies &&
+        isEnteringOutside &&
+        outsideNow >= fieldingRule.maxOutside
+        ? projectIntoRestrictionArea(point)
+        : point;
+      return current.map((fielder) =>
+        fielder.id === id ? { ...fielder, x: safePoint.x, y: safePoint.y } : fielder,
+      );
+    });
   };
 
   const updatePlayerName = (id: number, name: string) => {
@@ -1068,9 +1283,13 @@ function App() {
 
   const applyPreset = (name: string) => {
     const points = presets[name];
+    const proposed = fielders.map((fielder, index) => ({ ...fielder, ...points[index] }));
+    const legal = fieldingRule.applies
+      ? fitFieldersToOutsideLimit(proposed, fieldingRule.maxOutside)
+      : proposed;
     commitFielders(
-      fielders.map((fielder, index) => ({ ...fielder, ...points[index] })),
-      `${name} applied`,
+      legal,
+      name + " applied" + (legal !== proposed ? " — fielding restrictions enforced" : ""),
     );
   };
 
@@ -1078,13 +1297,17 @@ function App() {
     setZoom(1);
     setPan({ x: 0, y: 0 });
     setRotation(0);
+    const proposed = fielders.map((fielder, index) => ({
+      ...fielder,
+      x: initialFielders[index].x,
+      y: initialFielders[index].y,
+    }));
+    const legal = fieldingRule.applies
+      ? fitFieldersToOutsideLimit(proposed, fieldingRule.maxOutside)
+      : proposed;
     commitFielders(
-      fielders.map((fielder, index) => ({
-        ...fielder,
-        x: initialFielders[index].x,
-        y: initialFielders[index].y,
-      })),
-      "Board reset to default shape",
+      legal,
+      "Board reset to default shape" + (legal !== proposed ? " — fielding restrictions enforced" : ""),
     );
   };
 
@@ -1137,8 +1360,14 @@ function App() {
           fielders: Fielder[];
         };
         if (parsed.fielders?.length === 11) {
-          const next = normalizeFielders(parsed.fielders);
-          commitFielders(next, "Imported formation loaded");
+          const normalized = normalizeFielders(parsed.fielders);
+          const next = fieldingRule.applies
+            ? fitFieldersToOutsideLimit(normalized, fieldingRule.maxOutside)
+            : normalized;
+          commitFielders(
+            next,
+            "Imported formation loaded" + (next !== normalized ? " — fielding restrictions enforced" : ""),
+          );
         }
       } catch {
         setTimeline((items) =>
@@ -1187,6 +1416,9 @@ function App() {
         setContext((current) => ({
           ...current,
           format: "T20",
+          inningsOvers: 20,
+          currentOver: 1,
+          currentBall: 1,
           phase: "Powerplay",
           battingStyle: "Aggressive",
         }));
@@ -1358,18 +1590,112 @@ function App() {
                 label="Format"
                 value={context.format}
                 options={["T10", "T20", "ODI", "Test"]}
-                onChange={(format) =>
-                  setContext((current) => ({ ...current, format }))
-                }
+                onChange={(format) => {
+                  setContext((current) => {
+                    const next = {
+                      ...current,
+                      format,
+                      inningsOvers: getDefaultInningsOvers(format),
+                      currentOver: 1,
+                      currentBall: 1,
+                    };
+                    return { ...next, phase: deriveTacticalPhase(next) };
+                  });
+                }}
               />
+              <label className="select-group">
+                <span>Overs per innings</span>
+                <input
+                  className="rule-number-input"
+                  type="number"
+                  min={context.format === "ODI" ? 20 : context.format === "T20" ? 5 : context.format === "T10" ? 3 : 1}
+                  max={context.format === "ODI" ? 50 : context.format === "T20" ? 20 : context.format === "T10" ? 10 : 120}
+                  value={context.inningsOvers}
+                  disabled={context.format === "Test"}
+                  onChange={(event) => {
+                    const rawOvers = event.currentTarget.valueAsNumber;
+                    if (!Number.isFinite(rawOvers)) return;
+                    setContext((current) => {
+                      const minOvers = current.format === "ODI" ? 20 : current.format === "T20" ? 5 : current.format === "T10" ? 3 : 1;
+                      const maxOvers = current.format === "ODI" ? 50 : current.format === "T20" ? 20 : current.format === "T10" ? 10 : 120;
+                      const inningsOvers = clamp(Math.trunc(rawOvers), minOvers, maxOvers);
+                      const next = {
+                        ...current,
+                        inningsOvers,
+                        currentOver: Math.min(current.currentOver, inningsOvers),
+                      };
+                      return { ...next, phase: deriveTacticalPhase(next) };
+                    });
+                  }}
+                />
+              </label>
+            </div>
+            <div className="two-col">
+              <label className="select-group">
+                <span>Current over</span>
+                <input
+                  className="rule-number-input"
+                  type="number"
+                  min={1}
+                  max={context.inningsOvers}
+                  value={context.currentOver}
+                  disabled={context.format === "Test"}
+                  onChange={(event) => {
+                    const rawOver = event.currentTarget.valueAsNumber;
+                    if (!Number.isFinite(rawOver)) return;
+                    setContext((current) => {
+                      const currentOver = clamp(Math.trunc(rawOver), 1, current.inningsOvers);
+                      const next = { ...current, currentOver };
+                      return { ...next, phase: deriveTacticalPhase(next) };
+                    });
+                  }}
+                />
+              </label>
               <SelectGroup
-                label="Phase"
-                value={context.phase}
-                options={["Powerplay", "Middle Overs", "Death Overs"]}
-                onChange={(phase) =>
-                  setContext((current) => ({ ...current, phase }))
-                }
+                label="Ball in over"
+                value={String(context.currentBall)}
+                options={["1", "2", "3", "4", "5", "6"]}
+                onChange={(ball) => {
+                  setContext((current) => {
+                    const next = { ...current, currentBall: Number(ball) };
+                    return { ...next, phase: deriveTacticalPhase(next) };
+                  });
+                }}
               />
+            </div>
+            <div className="fielding-rules" aria-live="polite">
+              <div className={"fielding-rule-status " + (!fieldingRule.applies ? "neutral" : fieldingIsLegal ? "legal" : "illegal")}>
+                <div className="fielding-rule-heading">
+                  <span>FIELDING RESTRICTIONS</span>
+                  <strong>{fieldingRule.phaseLabel}</strong>
+                </div>
+                <span className="fielding-rule-badge">
+                  {!fieldingRule.applies ? "NOT APPLICABLE" : fieldingIsLegal ? "LEGAL" : "ILLEGAL"}
+                </span>
+              </div>
+              <div className="fielding-rule-metrics">
+                <div className="rule-metric">
+                  <span>Outside 30 yd</span>
+                  <strong>{outsideCount}</strong>
+                </div>
+                <div className="rule-metric">
+                  <span>Maximum allowed</span>
+                  <strong>{fieldingRule.applies ? fieldingRule.maxOutside : "No cap"}</strong>
+                </div>
+              </div>
+              <p className="fielding-rule-note">{fieldingRule.note}</p>
+              <button
+                className="rule-fix-button"
+                disabled={!fieldingRule.applies || fieldingIsLegal}
+                onClick={() => {
+                  const legal = fitFieldersToOutsideLimit(fielders, fieldingRule.maxOutside);
+                  if (legal !== fielders) {
+                    commitFielders(legal, "Fielding restrictions enforced manually");
+                  }
+                }}
+              >
+                Arrange legal field
+              </button>
             </div>
           </Panel>
 
@@ -1612,15 +1938,13 @@ function App() {
                   strokeOpacity="0.55"
                   strokeWidth="1.3"
                 />
-                <circle
-                  cx="0"
-                  cy="0"
-                  r="48"
+                <path
+                  d="M -48 -31 A 48 48 0 0 0 48 -31 L 48 28 A 48 48 0 0 0 -48 28 Z"
                   fill="none"
-                  stroke="#ddffef"
-                  strokeDasharray="2 3"
-                  strokeOpacity="0.65"
-                  strokeWidth="1"
+                  stroke="#fde68a"
+                  strokeDasharray="2 2"
+                  strokeOpacity="0.9"
+                  strokeWidth="1.1"
                 />
                 <g opacity="0.2">
                   {Array.from({ length: 18 }).map((_, index) => (
@@ -1871,6 +2195,14 @@ function App() {
             <div className="board-hud">
               <MetricPill label="Zoom" value={`${Math.round(zoom * 100)}%`} />
               <MetricPill label="Rotation" value={`${rotation} deg`} />
+              <MetricPill
+                label="Outside 30 yd"
+                value={fieldingRule.applies ? outsideCount + "/" + fieldingRule.maxOutside : "N/A"}
+              />
+              <MetricPill
+                label="Rule"
+                value={!fieldingRule.applies ? "Not used" : fieldingIsLegal ? "Legal" : "Illegal"}
+              />
               <MetricPill
                 label="Mode"
                 value={locked ? "Locked" : "Live Drag"}
